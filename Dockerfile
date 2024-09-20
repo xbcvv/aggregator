@@ -1,36 +1,40 @@
-# build: docker buildx build --platform linux/amd64 -f Dockerfile -t wzdnzd/aggregator:tag --build-arg PIP_INDEX_URL="https://pypi.tuna.tsinghua.edu.cn/simple" .
+# Use buildx to build multi-architecture images
+# build: docker buildx build --platform linux/amd64,linux/arm64 -f Dockerfile -t wzdnzd/aggregator:tag .
 
-FROM python:3.12.3-slim
+# Define separate stages for amd64 and arm64
+FROM --platform=linux/amd64 python:3.12.3-slim AS amd64
+FROM --platform=linux/arm64 arm64v8/python:3.12.3-slim AS arm64
 
-LABEL maintainer="wzdnzd"
+MAINTAINER wzdnzd
 
-# github personal access token
+# Common environment variables
 ENV GIST_PAT=""
-
-# github gist info, format: username/gist_id
 ENV GIST_LINK=""
-
-# customize airport listing url address
 ENV CUSTOMIZE_LINK=""
-
-# pip default index url
-ARG PIP_INDEX_URL="https://pypi.org/simple"
 
 WORKDIR /aggregator
 
-# copy files, only linux related files are needed
+# Copy files for both architectures
 COPY requirements.txt /aggregator
 COPY subscribe /aggregator/subscribe 
 COPY clash/clash-linux-amd clash/Country.mmdb /aggregator/clash
-
 COPY subconverter /aggregator/subconverter
-RUN rm -rf subconverter/subconverter-darwin-amd \
-    && rm -rf subconverter/subconverter-darwin-arm \
-    && rm -rf subconverter/subconverter-linux-arm \
-    && rm -rf subconverter/subconverter-windows.exe
 
-# install dependencies
-RUN pip install -i ${PIP_INDEX_URL} --no-cache-dir -r requirements.txt
+# Remove unnecessary files based on architecture
+RUN if [ "$(uname -m)" = "x86_64" ]; then \
+      rm -rf subconverter/subconverter-darwin-amd \
+      && rm -rf subconverter/subconverter-darwin-arm \
+      && rm -rf subconverter/subconverter-linux-arm \
+      && rm -rf subconverter/subconverter-windows.exe; \
+    elif [ "$(uname -m)" = "aarch64" ]; then \
+      rm -rf subconverter/subconverter-darwin-amd \
+      && rm -rf subconverter/subconverter-darwin-arm \
+      && rm -rf subconverter/subconverter-linux-amd \
+      && rm -rf subconverter/subconverter-windows.exe; \
+    fi
 
-# start and run
+# Install dependencies for both architectures
+RUN pip install -i https://pypi.tuna.tsinghua.edu.cn/simple --no-cache-dir -r requirements.txt
+
+# Start and run command for both architectures
 CMD ["python", "-u", "subscribe/collect.py", "--all", "--overwrite", "--skip"]
